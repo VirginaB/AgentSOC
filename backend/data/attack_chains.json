@@ -1,0 +1,65 @@
+[
+  {
+    "id": "brute_force",
+    "name": "Brute Force Credential Attack",
+    "description": "Repeated authentication failures followed by a successful login — classic brute force or credential stuffing pattern.",
+    "severity": "CRITICAL",
+    "mitre": "T1110 — Brute Force",
+    "window_seconds": 300,
+    "sequence": [
+      {"label": "authentication-failed", "min_count": 5},
+      {"label": "authentication-success", "min_count": 1}
+    ]
+  },
+  {
+    "id": "privilege_escalation",
+    "name": "Privilege Escalation Chain",
+    "description": "Login followed by privilege change and file access — attacker gained access and immediately escalated permissions.",
+    "severity": "CRITICAL",
+    "mitre": "T1068 — Exploitation for Privilege Escalation",
+    "window_seconds": 600,
+    "sequence": [
+      {"label": "authentication-success", "min_count": 1},
+      {"label": "privilege-escalation", "min_count": 1},
+      {"label": "file-access", "min_count": 1}
+    ]
+  },
+  {
+    "id": "recon_exploit",
+    "name": "Reconnaissance and Exploitation",
+    "description": "Port scanning followed by IDS alert and authentication attempt — attacker profiled the target before striking.",
+    "severity": "HIGH",
+    "mitre": "T1046 — Network Service Discovery",
+    "window_seconds": 900,
+    "sequence": [
+      {"label": "network-scan", "min_count": 1},
+      {"label": "ids-alert", "min_count": 1},
+      {"label": "authentication-failed", "min_count": 1}
+    ]
+  },
+  {
+    "id": "data_exfiltration",
+    "name": "Data Exfiltration Pattern",
+    "description": "Bulk file access followed by abnormal outbound network transfer — potential data theft in progress.",
+    "severity": "CRITICAL",
+    "mitre": "T1041 — Exfiltration Over C2 Channel",
+    "window_seconds": 600,
+    "sequence": [
+      {"label": "file-access", "min_count": 10},
+      {"label": "network-connection", "min_count": 1}
+    ]
+  },
+  {
+    "id": "malware_execution",
+    "name": "Malware Execution Pattern",
+    "description": "Suspicious process started, files modified, then outbound connection — consistent with malware establishing persistence and calling home.",
+    "severity": "CRITICAL",
+    "mitre": "T1059 — Command and Scripting Interpreter",
+    "window_seconds": 300,
+    "sequence": [
+      {"label": "process-started", "min_count": 1},
+      {"label": "file-modified", "min_count": 1},
+      {"label": "network-connection", "min_count": 1}
+    ]
+  }
+]
