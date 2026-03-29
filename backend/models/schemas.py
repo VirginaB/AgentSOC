@@ -12,6 +12,22 @@ class LogInput(BaseModel):
 class BatchLogInput(BaseModel):
     logs: List[LogInput] = Field(..., max_length=50)
 
+
+class UploadBatchResult(BaseModel):
+    id: int
+    log_text: str
+    label: str
+    risk_tier: str
+    source_ip: Optional[str] = None
+
+
+class UploadResponse(BaseModel):
+    filename: str
+    processed: int
+    skipped: int
+    chains_detected: int
+    results: List[UploadBatchResult] = []
+
 class ChatMessage(BaseModel):
     role: str          # "user" or "assistant"
     content: str

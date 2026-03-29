@@ -1,170 +1,174 @@
 """
 Core analysis router.
 
-POST /api/analyze        — fully analyze a single log
-POST /api/analyze/batch  — analyze up to 50 logs
-GET  /api/alerts         — retrieve stored alerts (with filters)
-GET  /api/alerts/{id}    — get a specific alert
-GET  /api/similar/{id}   — get similar logs to a given alert
-GET  /api/chains         — get detected attack chains
-GET  /api/stats          — dashboard summary statistics
-POST /api/stream/start   — start replaying dataset (for demo)
-POST /api/stream/stop    — stop replay
+POST /api/analyze        - fully analyze a single log
+POST /api/analyze/batch  - analyze up to 50 logs
+POST /api/analyze/upload - analyze logs from an uploaded file
+GET  /api/alerts         - retrieve stored alerts (with filters)
+GET  /api/alerts/{id}    - get a specific alert
+GET  /api/similar/{id}   - get similar logs to a given alert
+GET  /api/chains         - get detected attack chains
+GET  /api/stats          - dashboard summary statistics
+POST /api/stream/start   - start replaying dataset (for demo)
+POST /api/stream/stop    - stop replay
 """
 
 import asyncio
-import json
 import logging
-from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
 
-from db import get_db, AlertRecord, AttackChainRecord
-from models.schemas import (
-    LogInput, BatchLogInput, AlertResponse, AttackChainResponse, StatsResponse
-)
-from services.classifier import classify_log
-from services.llm import explain_log
-from services.scorer import compute_risk_score
-from services.correlator import ingest_event
-from services.similarity import add_to_index, find_similar
+from db import AlertRecord, AttackChainRecord, get_db
+from models.schemas import AlertResponse, BatchLogInput, LogInput, StatsResponse, UploadResponse
+from services.file_parser import SUPPORTED_EXTENSIONS, parse_uploaded_logs
+from services.ingestion import process_log_event
+from services.similarity import find_similar
+from ws_manager import manager as ws_manager
 
 router = APIRouter(prefix="/api", tags=["analyze"])
 logger = logging.getLogger(__name__)
 
-# Stream state
 _stream_task: Optional[asyncio.Task] = None
 _stream_running = False
 
 
-# ─── Single log analysis ─────────────────────────────────────────────────────
-
 @router.post("/analyze", response_model=AlertResponse)
 async def analyze_log(
     payload: LogInput,
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Full pipeline: classify → score → explain → correlate → store.
-    """
-    log_text = payload.log_text.strip()
-    source_ip = payload.source_ip or _extract_ip(log_text)
-
-    # Step 1: Classify
-    classification = classify_log(log_text)
-    label = classification["label"]
-    confidence = classification["confidence"]
-
-    # Step 2: Score
-    score_result = compute_risk_score(label, confidence, source_ip)
-
-    # Step 3: LLM explanation (async — this is the slow step, ~2–5s)
-    llm_result = await explain_log(
-        log_text=log_text,
-        label=label,
-        confidence=confidence,
-        risk_score=score_result["score"],
-        risk_tier=score_result["tier"],
+    result = await process_log_event(
+        db=db,
+        log_text=payload.log_text,
+        source_ip=payload.source_ip,
+        include_explanation=True,
+        include_similar=False,
+        add_similarity=True,
     )
+    result["similar_logs"] = find_similar(result["log_text"], top_k=5)
 
-    # Step 4: Store in DB
-    alert = AlertRecord(
-        log_text=log_text,
-        label=label,
-        confidence=confidence,
-        risk_score=score_result["score"],
-        risk_tier=score_result["tier"],
-        explanation=llm_result["explanation"],
-        mitre_technique=llm_result["mitre_technique"],
-        source_ip=source_ip,
-        timestamp=datetime.now(timezone.utc),
-    )
-    db.add(alert)
-    await db.commit()
-    await db.refresh(alert)
+    # Push to all connected WebSocket clients
+    await ws_manager.broadcast("new_alert", {
+        "id": result["id"],
+        "log_text": result["log_text"][:200],
+        "label": result["label"],
+        "confidence": result["confidence"],
+        "risk_score": result["risk_score"],
+        "risk_tier": result["risk_tier"],
+        "source_ip": result["source_ip"],
+        "timestamp": result["timestamp"].isoformat(),
+        "chain_count": result["chain_count"],
+    })
 
-    # Step 5: Correlate (check for attack chains)
-    chains = ingest_event(source_ip, label, alert.id)
-    for chain in chains:
-        chain_record = AttackChainRecord(
-            chain_name=chain["chain_name"],
-            chain_type=chain["chain_type"],
-            alert_ids=json.dumps(chain["alert_ids"]),
-            source_ip=source_ip,
-            severity=chain["severity"],
-            description=chain["description"],
-            detected_at=datetime.now(timezone.utc),
-        )
-        db.add(chain_record)
-    if chains:
-        await db.commit()
+    return AlertResponse(**result)
 
-    # Step 6: Add to similarity index (background — doesn't block response)
-    background_tasks.add_task(add_to_index, alert.id, log_text, label, score_result["tier"])
-
-    # Step 7: Get similar logs
-    similar = find_similar(log_text, top_k=5)
-
-    return AlertResponse(
-        id=alert.id,
-        log_text=log_text,
-        label=label,
-        confidence=confidence,
-        risk_score=score_result["score"],
-        risk_tier=score_result["tier"],
-        explanation=llm_result["explanation"],
-        mitre_technique=llm_result["mitre_technique"],
-        source_ip=source_ip,
-        timestamp=alert.timestamp,
-        similar_logs=similar,
-    )
-
-
-# ─── Batch analysis ───────────────────────────────────────────────────────────
 
 @router.post("/analyze/batch")
 async def analyze_batch(
     payload: BatchLogInput,
     db: AsyncSession = Depends(get_db),
 ):
-    """Analyze multiple logs. LLM explanation is skipped for speed — use for bulk ingestion."""
     results = []
     for log_input in payload.logs:
-        log_text = log_input.log_text.strip()
-        source_ip = log_input.source_ip or _extract_ip(log_text)
-
-        classification = classify_log(log_text)
-        score_result = compute_risk_score(
-            classification["label"], classification["confidence"], source_ip
+        processed = await process_log_event(
+            db=db,
+            log_text=log_input.log_text,
+            source_ip=log_input.source_ip,
+            include_explanation=False,
+            include_similar=False,
+            add_similarity=True,
+        )
+        results.append(
+            {
+                "id": processed["id"],
+                "log_text": processed["log_text"][:80],
+                "label": processed["label"],
+                "risk_tier": processed["risk_tier"],
+                "chain_count": processed["chain_count"],
+            }
         )
 
-        alert = AlertRecord(
-            log_text=log_text,
-            label=classification["label"],
-            confidence=classification["confidence"],
-            risk_score=score_result["score"],
-            risk_tier=score_result["tier"],
-            explanation="",
-            mitre_technique="",
-            source_ip=source_ip,
-            timestamp=datetime.now(timezone.utc),
-        )
-        db.add(alert)
-        results.append({
-            "log_text": log_text[:80],
-            "label": classification["label"],
-            "risk_tier": score_result["tier"],
-        })
+    # Broadcast stats update after batch
+    await ws_manager.broadcast("stats_refresh", {})
 
-    await db.commit()
     return {"processed": len(results), "results": results}
 
 
-# ─── Retrieve alerts ──────────────────────────────────────────────────────────
+@router.post("/analyze/upload", response_model=UploadResponse)
+async def analyze_upload(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+):
+    filename = file.filename or "uploaded_file"
+    extension = ""
+    if "." in filename:
+        extension = "." + filename.rsplit(".", 1)[1].lower()
+
+    if extension and extension not in SUPPORTED_EXTENSIONS:
+        supported = ", ".join(sorted(SUPPORTED_EXTENSIONS))
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type '{extension}'. Supported types: {supported}",
+        )
+
+    # Size guard — reject files over 10MB before reading into memory
+    MAX_BYTES = 10 * 1024 * 1024
+    content = await file.read(MAX_BYTES + 1)
+    if len(content) > MAX_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail="File too large. Maximum upload size is 10MB.",
+        )
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+    try:
+        parsed_logs = parse_uploaded_logs(filename, content)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if not parsed_logs:
+        raise HTTPException(status_code=400, detail="No logs were found in the uploaded file.")
+
+    max_logs = 500
+    logs_to_process = parsed_logs[:max_logs]
+    skipped = max(len(parsed_logs) - len(logs_to_process), 0)
+
+    results = []
+    chains_detected = 0
+    for item in logs_to_process:
+        processed = await process_log_event(
+            db=db,
+            log_text=item["log_text"],
+            source_ip=item.get("source_ip"),
+            include_explanation=False,
+            include_similar=False,
+            add_similarity=True,
+        )
+        chains_detected += processed["chain_count"]
+        results.append(
+            {
+                "id": processed["id"],
+                "log_text": processed["log_text"][:120],
+                "label": processed["label"],
+                "risk_tier": processed["risk_tier"],
+                "source_ip": processed["source_ip"],
+            }
+        )
+
+    await ws_manager.broadcast("stats_refresh", {})
+
+    return UploadResponse(
+        filename=filename,
+        processed=len(results),
+        skipped=skipped,
+        chains_detected=chains_detected,
+        results=results,
+    )
+
 
 @router.get("/alerts")
 async def get_alerts(
@@ -199,23 +203,17 @@ async def get_similar(alert_id: int, db: AsyncSession = Depends(get_db)):
     return {"alert_id": alert_id, "similar": similar}
 
 
-# ─── Attack chains ────────────────────────────────────────────────────────────
-
 @router.get("/chains")
 async def get_chains(
     limit: int = Query(20, le=100),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(AttackChainRecord)
-        .order_by(desc(AttackChainRecord.detected_at))
-        .limit(limit)
+        select(AttackChainRecord).order_by(desc(AttackChainRecord.detected_at)).limit(limit)
     )
     chains = result.scalars().all()
     return [_chain_to_dict(c) for c in chains]
 
-
-# ─── Dashboard stats ──────────────────────────────────────────────────────────
 
 @router.get("/stats", response_model=StatsResponse)
 async def get_stats(db: AsyncSession = Depends(get_db)):
@@ -253,8 +251,6 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
     )
 
 
-# ─── Demo stream ──────────────────────────────────────────────────────────────
-
 @router.post("/stream/start")
 async def start_stream(background_tasks: BackgroundTasks):
     global _stream_running
@@ -277,14 +273,6 @@ async def stream_status():
     return {"running": _stream_running}
 
 
-# ─── Helpers ─────────────────────────────────────────────────────────────────
-
-def _extract_ip(log_text: str) -> str:
-    import re
-    match = re.search(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", log_text)
-    return match.group(0) if match else "unknown"
-
-
 def _alert_to_dict(a: AlertRecord) -> dict:
     return {
         "id": a.id,
@@ -303,6 +291,7 @@ def _alert_to_dict(a: AlertRecord) -> dict:
 
 def _chain_to_dict(c: AttackChainRecord) -> dict:
     import json as _json
+
     try:
         alert_ids = _json.loads(c.alert_ids) if c.alert_ids else []
     except Exception:
@@ -321,12 +310,13 @@ def _chain_to_dict(c: AttackChainRecord) -> dict:
 
 async def _run_demo_stream():
     """
-    Replay sample logs one by one with a 1-second delay.
-    In production this would read from your SIEVE CSV or a Kafka topic.
+    Demo stream now calls process_log_event directly instead of via HTTP.
+    This avoids the localhost self-call overhead entirely.
     """
-    from httpx import AsyncClient
+    from db import AsyncSessionLocal
+    from services.ingestion import process_log_event as _process
 
-    SAMPLE_LOGS = [
+    sample_logs = [
         "Failed password for root from 192.168.1.45 port 22 ssh2",
         "Failed password for root from 192.168.1.45 port 22 ssh2",
         "Failed password for root from 192.168.1.45 port 22 ssh2",
@@ -349,13 +339,31 @@ async def _run_demo_stream():
         "FTP transfer of 2.3GB to external IP 203.0.113.42",
     ]
 
-    async with AsyncClient(base_url="http://localhost:8000") as client:
-        i = 0
-        while _stream_running and i < len(SAMPLE_LOGS):
-            log = SAMPLE_LOGS[i % len(SAMPLE_LOGS)]
-            try:
-                await client.post("/api/analyze", json={"log_text": log}, timeout=30)
-            except Exception as e:
-                logger.warning(f"Stream error on log {i}: {e}")
-            i += 1
-            await asyncio.sleep(2)   # 1 log every 2 seconds
+    index = 0
+    while _stream_running and index < len(sample_logs):
+        log = sample_logs[index % len(sample_logs)]
+        try:
+            async with AsyncSessionLocal() as db:
+                result = await _process(
+                    db=db,
+                    log_text=log,
+                    source_ip=None,
+                    include_explanation=False,
+                    include_similar=False,
+                    add_similarity=True,
+                )
+                await ws_manager.broadcast("new_alert", {
+                    "id": result["id"],
+                    "log_text": result["log_text"][:200],
+                    "label": result["label"],
+                    "confidence": result["confidence"],
+                    "risk_score": result["risk_score"],
+                    "risk_tier": result["risk_tier"],
+                    "source_ip": result["source_ip"],
+                    "timestamp": result["timestamp"].isoformat(),
+                    "chain_count": result["chain_count"],
+                })
+        except Exception as exc:
+            logger.warning(f"Stream error on log {index}: {exc}")
+        index += 1
+        await asyncio.sleep(2)
