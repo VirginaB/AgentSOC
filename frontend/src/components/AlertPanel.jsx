@@ -1,22 +1,41 @@
 import { useEffect, useState } from "react";
-import { getSimilar, sendFeedback } from "../api/client";
+import { generateExplanation, getSimilar, sendFeedback } from "../api/client";
 import SeverityBadge from "./SeverityBadge";
 import ModelVotes from "./ModelVotes";
-import { X, Shield, AlertTriangle, Link, ThumbsUp, ThumbsDown, Cpu } from "lucide-react";
+import { X, Shield, AlertTriangle, Link, ThumbsUp, ThumbsDown, Cpu, Sparkles } from "lucide-react";
 
 export default function AlertPanel({ alert, onClose }) {
   const [similar, setSimilar]   = useState([]);
   const [feedback, setFeedback] = useState(alert?.feedback || null);
+  const [explanation, setExplanation] = useState(alert?.explanation || "");
+  const [mitreTechnique, setMitreTechnique] = useState(alert?.mitre_technique || "");
+  const [loadingExplanation, setLoadingExplanation] = useState(false);
 
   useEffect(() => {
     if (!alert) return;
     setFeedback(alert.feedback || null);
     setSimilar([]);
+    setExplanation(alert.explanation || "");
+    setMitreTechnique(alert.mitre_technique || "");
     getSimilar(alert.id).then(r => setSimilar(r.data.similar || [])).catch(() => {});
   }, [alert?.id]);
 
   const handleFeedback = async (type) => {
     try { await sendFeedback(alert.id, type); setFeedback(type); } catch (_) {}
+  };
+
+  const handleGenerateExplanation = async () => {
+    if (!alert?.id || loadingExplanation) return;
+    setLoadingExplanation(true);
+    try {
+      const { data } = await generateExplanation(alert.id);
+      setExplanation(data.explanation || "");
+      setMitreTechnique(data.mitre_technique || "");
+    } catch (_) {
+      setExplanation("Unable to generate explanation right now. Please make sure the LLM service is available.");
+    } finally {
+      setLoadingExplanation(false);
+    }
   };
 
   if (!alert) return null;
@@ -105,17 +124,47 @@ export default function AlertPanel({ alert, onClose }) {
         )}
 
         <Section title="AI Analysis" icon={<AlertTriangle size={13} />}>
-          <p style={{ fontSize: 13, lineHeight: 1.7, color: "var(--text)",
-            margin: 0, whiteSpace: "pre-wrap" }}>
-            {alert.explanation || "No explanation available."}
-          </p>
+          {explanation ? (
+            <p style={{ fontSize: 13, lineHeight: 1.7, color: "var(--text)",
+              margin: 0, whiteSpace: "pre-wrap" }}>
+              {explanation}
+            </p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <p style={{ fontSize: 13, lineHeight: 1.7, color: "var(--muted)", margin: 0 }}>
+                No explanation available for this alert yet.
+              </p>
+              <button
+                onClick={handleGenerateExplanation}
+                disabled={loadingExplanation}
+                style={{
+                  alignSelf: "flex-start",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "0.5px solid var(--border)",
+                  background: "var(--surface)",
+                  color: "var(--text)",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  cursor: loadingExplanation ? "not-allowed" : "pointer",
+                  opacity: loadingExplanation ? 0.7 : 1,
+                }}
+              >
+                <Sparkles size={14} />
+                {loadingExplanation ? "Generating..." : "Generate AI explanation"}
+              </button>
+            </div>
+          )}
         </Section>
 
-        {alert.mitre_technique && (
+        {mitreTechnique && (
           <Section title="MITRE ATT&CK" icon={<Link size={13} />}>
             <span style={{ fontSize: 12, fontWeight: 500, padding: "3px 10px",
               background: "#ede9fe", color: "#5b21b6", borderRadius: 99 }}>
-              {alert.mitre_technique}
+              {mitreTechnique}
             </span>
           </Section>
         )}

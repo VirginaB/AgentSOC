@@ -15,14 +15,13 @@ import { analyzeLog } from "./api/client";
 import StatsBar       from "./components/StatsBar";
 import LogFeed        from "./components/LogFeed";
 import AlertPanel     from "./components/AlertPanel";
-import AttackChains   from "./components/AttackChains";
 import UploadPanel    from "./components/UploadPanel";
 import ChatPanel      from "./components/ChatPanel";
 import WatcherStatus  from "./components/WatcherStatus";
 
 import { Loader2, Send, Shield } from "lucide-react";
 
-const TABS = ["Alerts", "Attack Chains", "Upload Logs", "Chat"];
+const TABS = ["Alerts", "Upload Logs", "Chat"];
 
 export default function App() {
   const { alerts, stats, refreshTick, wsStatus } = useAlerts();
@@ -239,12 +238,6 @@ export default function App() {
                   onSelectAlert={setSelected}
                 />
               </div>
-            </div>
-          )}
-
-          {tab === "Attack Chains" && (
-            <div style={{ overflowY: "auto", flex: 1 }}>
-              <AttackChains refreshTick={refreshTick} />
             </div>
           )}
 

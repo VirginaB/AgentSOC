@@ -3,6 +3,37 @@ import { getAlerts, sendFeedback } from "../api/client";
 import SeverityBadge from "./SeverityBadge";
 import { ThumbsUp, ThumbsDown, ChevronRight } from "lucide-react";
 
+const IST_DATE_TIME = new Intl.DateTimeFormat("en-IN", {
+  timeZone: "Asia/Kolkata",
+  day: "2-digit",
+  month: "short",
+  hour: "numeric",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: true,
+});
+
+function sortAlertsByTimestamp(alerts) {
+  return [...alerts].sort((a, b) => {
+    const aTime = parseAlertTimestamp(a?.timestamp)?.getTime() ?? 0;
+    const bTime = parseAlertTimestamp(b?.timestamp)?.getTime() ?? 0;
+    return bTime - aTime;
+  });
+}
+
+function parseAlertTimestamp(timestamp) {
+  if (!timestamp) return null;
+  const normalized = /(?:Z|[+-]\d{2}:\d{2})$/.test(timestamp) ? timestamp : `${timestamp}Z`;
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatIstTimestamp(timestamp) {
+  const parsed = parseAlertTimestamp(timestamp);
+  if (!parsed) return "-";
+  return `${IST_DATE_TIME.format(parsed)} IST`;
+}
+
 /**
  * LogFeed accepts either:
  *   - alerts prop (pre-fetched by useAlerts hook) — no extra HTTP call, live via WS
@@ -42,11 +73,12 @@ export default function LogFeed({ alerts: alertsProp, refreshTick, onSelectAlert
 
   // Use prop alerts if available, fall back to local fetch
   const allAlerts = alertsProp ?? localAlerts;
+  const sortedAlerts = sortAlertsByTimestamp(allAlerts);
 
   // Client-side filter when using prop alerts (server filters for local fetch)
   const alerts = filter === "ALL"
-    ? allAlerts
-    : allAlerts.filter((a) => a.risk_tier === filter);
+    ? sortedAlerts
+    : sortedAlerts.filter((a) => a.risk_tier === filter);
 
   const tiers = ["ALL", "CRITICAL", "HIGH", "MEDIUM", "LOW"];
 
@@ -74,7 +106,7 @@ export default function LogFeed({ alerts: alertsProp, refreshTick, onSelectAlert
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ background: "var(--surface)", position: "sticky", top: 0 }}>
-              {["Time", "Log (truncated)", "Category", "Score", "Tier", "Feedback", ""].map((h) => (
+              {["Time (IST)", "Log (truncated)", "Category", "Score", "Tier", "Feedback", ""].map((h) => (
                 <th key={h} style={{
                   padding: "10px 14px", textAlign: "left",
                   fontWeight: 500, fontSize: 11, color: "var(--muted)",
@@ -107,7 +139,7 @@ export default function LogFeed({ alerts: alertsProp, refreshTick, onSelectAlert
                   i % 2 === 0 ? "var(--card)" : "var(--surface)"}
               >
                 <td style={{ padding: "9px 14px", color: "var(--muted)", whiteSpace: "nowrap" }}>
-                  {new Date(a.timestamp).toLocaleTimeString()}
+                  {formatIstTimestamp(a.timestamp)}
                 </td>
                 <td style={{ padding: "9px 14px", maxWidth: 320 }}>
                   <span style={{

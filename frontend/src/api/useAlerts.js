@@ -17,6 +17,14 @@ const WS_URL = "ws://localhost:8000/ws/alerts";
 const RECONNECT_DELAY_MS = 3000;
 const MAX_ALERTS = 200; // keep last N in memory
 
+function sortAlertsByTimestamp(alerts) {
+  return [...alerts].sort((a, b) => {
+    const aTime = a?.timestamp ? new Date(a.timestamp).getTime() : 0;
+    const bTime = b?.timestamp ? new Date(b.timestamp).getTime() : 0;
+    return bTime - aTime;
+  });
+}
+
 export function useAlerts() {
   const [alerts, setAlerts]       = useState([]);
   const [stats, setStats]         = useState(null);
@@ -31,7 +39,7 @@ export function useAlerts() {
     try {
       const [alertsRes, statsRes] = await Promise.all([getAlerts(100), getStats()]);
       if (mountedRef.current) {
-        setAlerts(alertsRes.data || []);
+        setAlerts(sortAlertsByTimestamp(alertsRes.data || []));
         setStats(statsRes.data || null);
       }
     } catch (_) {}
@@ -57,8 +65,8 @@ export function useAlerts() {
 
         if (type === "new_alert") {
           setAlerts((prev) => {
-            const next = [data, ...prev];
-            return next.slice(0, MAX_ALERTS);
+            const next = [data, ...prev.filter((alert) => alert.id !== data.id)];
+            return sortAlertsByTimestamp(next).slice(0, MAX_ALERTS);
           });
           setRefreshTick((t) => t + 1);
         }

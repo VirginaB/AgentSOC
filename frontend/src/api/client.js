@@ -16,6 +16,7 @@ export const uploadLogFile = uploadFile;
 
 export const getAlerts     = (limit = 50, tier)   => api.get("/api/alerts", { params: { limit, tier } });
 export const getAlert      = (id)                  => api.get(`/api/alerts/${id}`);
+export const generateExplanation = (id)           => api.post(`/api/alerts/${id}/explain`);
 export const getSimilar    = (id)                  => api.get(`/api/similar/${id}`);
 export const getChains     = ()                    => api.get("/api/chains");
 export const getStats      = ()                    => api.get("/api/stats");

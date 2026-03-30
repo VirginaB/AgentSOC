@@ -15,6 +15,7 @@ POST /api/stream/stop    - stop replay
 
 import asyncio
 import logging
+from datetime import timezone
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
@@ -25,6 +26,7 @@ from db import AlertRecord, AttackChainRecord, get_db
 from models.schemas import AlertResponse, BatchLogInput, LogInput, StatsResponse, UploadResponse
 from services.file_parser import SUPPORTED_EXTENSIONS, parse_uploaded_logs
 from services.ingestion import process_log_event
+from services.llm import explain_log
 from services.similarity import find_similar
 from ws_manager import manager as ws_manager
 
@@ -193,6 +195,29 @@ async def get_alert(alert_id: int, db: AsyncSession = Depends(get_db)):
     return _alert_to_dict(alert)
 
 
+@router.post("/alerts/{alert_id}/explain")
+async def generate_alert_explanation(alert_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(AlertRecord).where(AlertRecord.id == alert_id))
+    alert = result.scalar_one_or_none()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    llm_result = await explain_log(
+        log_text=alert.log_text,
+        label=alert.label,
+        confidence=alert.confidence or 0.0,
+        risk_score=alert.risk_score or 0.0,
+        risk_tier=alert.risk_tier or "LOW",
+    )
+
+    alert.explanation = llm_result["explanation"]
+    alert.mitre_technique = llm_result["mitre_technique"]
+    await db.commit()
+    await db.refresh(alert)
+
+    return _alert_to_dict(alert)
+
+
 @router.get("/similar/{alert_id}")
 async def get_similar(alert_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(AlertRecord).where(AlertRecord.id == alert_id))
@@ -290,7 +315,7 @@ def _alert_to_dict(a: AlertRecord) -> dict:
         "explanation": a.explanation,
         "mitre_technique": a.mitre_technique,
         "source_ip": a.source_ip,
-        "timestamp": a.timestamp.isoformat() if a.timestamp else None,
+        "timestamp": _serialize_timestamp(a.timestamp),
         "feedback": a.feedback,
         "model_votes": model_votes,
     }
@@ -311,8 +336,18 @@ def _chain_to_dict(c: AttackChainRecord) -> dict:
         "source_ip": c.source_ip,
         "description": c.description,
         "alert_ids": alert_ids,
-        "detected_at": c.detected_at.isoformat() if c.detected_at else None,
+        "detected_at": _serialize_timestamp(c.detected_at),
     }
+
+
+def _serialize_timestamp(value):
+    if not value:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    else:
+        value = value.astimezone(timezone.utc)
+    return value.isoformat()
 
 
 async def _run_demo_stream():
