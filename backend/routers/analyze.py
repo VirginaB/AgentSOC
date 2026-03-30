@@ -274,6 +274,12 @@ async def stream_status():
 
 
 def _alert_to_dict(a: AlertRecord) -> dict:
+    import json as _json
+    try:
+        model_votes = _json.loads(a.model_votes) if a.model_votes else None
+    except Exception:
+        model_votes = None
+
     return {
         "id": a.id,
         "log_text": a.log_text,
@@ -286,6 +292,7 @@ def _alert_to_dict(a: AlertRecord) -> dict:
         "source_ip": a.source_ip,
         "timestamp": a.timestamp.isoformat() if a.timestamp else None,
         "feedback": a.feedback,
+        "model_votes": model_votes,
     }
 
 

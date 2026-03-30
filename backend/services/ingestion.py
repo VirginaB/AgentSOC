@@ -11,7 +11,6 @@ from services.similarity import add_to_index, find_similar
 
 def extract_ip(log_text: str) -> str:
     import re
-
     match = re.search(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", log_text)
     return match.group(0) if match else "unknown"
 
@@ -29,8 +28,12 @@ async def process_log_event(
     resolved_ip = source_ip or extract_ip(clean_log)
 
     classification = classify_log(clean_log)
-    label = classification["label"]
+    label      = classification["label"]
     confidence = classification["confidence"]
+
+    # Grab ensemble votes if present (None otherwise)
+    model_votes = classification.get("model_votes")   # dict | None
+
     score_result = compute_risk_score(label, confidence, resolved_ip)
 
     explanation = ""
@@ -43,7 +46,7 @@ async def process_log_event(
             risk_score=score_result["score"],
             risk_tier=score_result["tier"],
         )
-        explanation = llm_result["explanation"]
+        explanation     = llm_result["explanation"]
         mitre_technique = llm_result["mitre_technique"]
 
     alert = AlertRecord(
@@ -56,6 +59,8 @@ async def process_log_event(
         mitre_technique=mitre_technique,
         source_ip=resolved_ip,
         timestamp=datetime.now(timezone.utc),
+        # Persist ensemble votes as JSON string
+        model_votes=json.dumps(model_votes) if model_votes else None,
     )
     db.add(alert)
     await db.commit()
@@ -83,16 +88,17 @@ async def process_log_event(
     similar_logs = find_similar(clean_log, top_k=5) if include_similar else []
 
     return {
-        "id": alert.id,
-        "log_text": clean_log,
-        "label": label,
-        "confidence": confidence,
-        "risk_score": score_result["score"],
-        "risk_tier": score_result["tier"],
-        "explanation": explanation,
+        "id":             alert.id,
+        "log_text":       clean_log,
+        "label":          label,
+        "confidence":     confidence,
+        "risk_score":     score_result["score"],
+        "risk_tier":      score_result["tier"],
+        "explanation":    explanation,
         "mitre_technique": mitre_technique,
-        "source_ip": resolved_ip,
-        "timestamp": alert.timestamp,
-        "similar_logs": similar_logs,
-        "chain_count": len(chains),
+        "source_ip":      resolved_ip,
+        "timestamp":      alert.timestamp,
+        "similar_logs":   similar_logs,
+        "chain_count":    len(chains),
+        "model_votes":    model_votes,   # dict | None — passed through to API response
     }

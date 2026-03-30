@@ -27,9 +27,10 @@ class AlertRecord(Base):
     mitre_technique = Column(String(200))
     source_ip = Column(String(50))
     timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    # Feedback from analyst
-    feedback = Column(String(20), nullable=True)   # "correct" | "false_positive" | "missed"
+    feedback = Column(String(20), nullable=True)
     feedback_label = Column(String(100), nullable=True)
+    # Ensemble: JSON blob — {"svm": "auth-failed", "bert": null, ...}
+    model_votes = Column(Text, nullable=True)
 
 
 class AttackChainRecord(Base):
@@ -38,7 +39,7 @@ class AttackChainRecord(Base):
     id = Column(Integer, primary_key=True, index=True)
     chain_name = Column(String(200))
     chain_type = Column(String(100))
-    alert_ids = Column(Text)          # JSON list of alert IDs
+    alert_ids = Column(Text)
     source_ip = Column(String(50))
     severity = Column(String(20))
     detected_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -48,6 +49,15 @@ class AttackChainRecord(Base):
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Add model_votes column to existing DBs that predate this field
+        try:
+            await conn.execute(
+                __import__("sqlalchemy").text(
+                    "ALTER TABLE alerts ADD COLUMN model_votes TEXT"
+                )
+            )
+        except Exception:
+            pass  # column already exists — fine
 
 
 async def get_db():
