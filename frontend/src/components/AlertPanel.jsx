@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { generateExplanation, getSimilar, sendFeedback } from "../api/client";
 import SeverityBadge from "./SeverityBadge";
-import ModelVotes from "./ModelVotes";
-import { X, Shield, AlertTriangle, Link, ThumbsUp, ThumbsDown, Cpu, Sparkles } from "lucide-react";
+import { X, Shield, AlertTriangle, Link, ThumbsUp, ThumbsDown, Sparkles } from "lucide-react";
 
 export default function AlertPanel({ alert, onClose }) {
   const [similar, setSimilar]   = useState([]);
@@ -43,9 +42,6 @@ export default function AlertPanel({ alert, onClose }) {
   const scoreColor =
     alert.risk_score >= 81 ? "#dc2626" : alert.risk_score >= 61 ? "#ea580c"
     : alert.risk_score >= 31 ? "#ca8a04" : "#16a34a";
-
-  const hasVotes = alert.model_votes &&
-    Object.values(alert.model_votes).some(v => v !== null);
 
   return (
     <div style={{
@@ -99,16 +95,6 @@ export default function AlertPanel({ alert, onClose }) {
             <span style={{ fontSize: 12, color: "var(--muted)" }}>
               ({(alert.confidence * 100).toFixed(0)}% confidence)
             </span>
-            {alert.method && (
-              <span style={{
-                fontSize: 10, padding: "1px 7px", borderRadius: 99,
-                background: hasVotes ? "#ede9fe" : "var(--surface)",
-                color: hasVotes ? "#5b21b6" : "var(--muted)",
-                border: "0.5px solid var(--border)",
-              }}>
-                {hasVotes ? "ensemble" : alert.method?.replace(/_/g, " ")}
-              </span>
-            )}
           </div>
           {alert.source_ip && (
             <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
@@ -116,12 +102,6 @@ export default function AlertPanel({ alert, onClose }) {
             </div>
           )}
         </Section>
-
-        {hasVotes && (
-          <Section title="Model votes" icon={<Cpu size={13} />}>
-            <ModelVotes votes={alert.model_votes} finalLabel={alert.label} />
-          </Section>
-        )}
 
         <Section title="AI Analysis" icon={<AlertTriangle size={13} />}>
           {explanation ? (

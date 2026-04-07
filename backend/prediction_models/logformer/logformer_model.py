@@ -5,6 +5,12 @@ Copied from logformer_scratch.py so the ensemble can import it
 without needing the full training script.
 
 Place this file in: backend/prediction_models/logformer/logformer_model.py
+
+IMPORTANT: The Vocabulary class MUST be defined here (not just in the
+training script) because best_model.pt was pickled with a Vocabulary object
+inside it. When torch.load() unpickles the checkpoint, it looks for
+'Vocabulary' in whatever module is on sys.path — if it can't find it,
+you get: "Can't get attribute 'Vocabulary' on <module '__main__'>"
 """
 
 import math
@@ -14,6 +20,35 @@ import torch.nn as nn
 
 def simple_tokenize(text: str) -> list[str]:
     return str(text).strip().lower().split()
+
+
+class Vocabulary:
+    """Must match the Vocabulary class used during training exactly."""
+
+    def __init__(self, min_freq=5, pad_token="<PAD>", unk_token="<UNK>"):
+        self.min_freq  = min_freq
+        self.pad_token = pad_token
+        self.unk_token = unk_token
+        self.word_freq: dict = {}
+        self.stoi:      dict = {}
+        self.itos:      list = []
+
+    def build(self, texts):
+        for text in texts:
+            for token in simple_tokenize(text):
+                self.word_freq[token] = self.word_freq.get(token, 0) + 1
+        self.itos = [self.pad_token, self.unk_token]
+        for word, freq in sorted(self.word_freq.items(), key=lambda x: -x[1]):
+            if freq >= self.min_freq:
+                self.itos.append(word)
+        self.stoi = {w: i for i, w in enumerate(self.itos)}
+
+    def encode(self, text, max_len=128):
+        tokens = simple_tokenize(text)[:max_len]
+        return [self.stoi.get(token, self.stoi[self.unk_token]) for token in tokens]
+
+    def __len__(self):
+        return len(self.itos)
 
 
 class PositionalEncoding(nn.Module):

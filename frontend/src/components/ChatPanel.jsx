@@ -5,7 +5,7 @@ import { Send, Bot, User } from "lucide-react";
 const SUGGESTED = [
   "What is the most critical threat right now?",
   "Summarize today's security incidents.",
-  "Are there any attack chains in progress?",
+  "Which alert should I investigate first?",
   "Which source IP has the most alerts?",
 ];
 

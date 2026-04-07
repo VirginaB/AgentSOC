@@ -74,19 +74,6 @@ def register_model(name: str, loader_fn: Callable, predict_fn: Callable):
 # ─── Main ensemble function ───────────────────────────────────────────────────
 
 def ensemble_classify(log_text: str) -> dict:
-    """
-    Run all registered, available models and return the majority-vote label.
-
-    Returns:
-        {
-            "label":       "authentication-failed",
-            "confidence":  0.67,           # fraction of models that agreed
-            "method":      "majority_vote",
-            "model_votes": {"svm": "authentication-failed", "bert": "network-scan", ...},
-            "vote_counts": {"authentication-failed": 2, "network-scan": 1},
-            "top_labels":  [{"label": "authentication-failed", "score": 0.67}]
-        }
-    """
     if not _registry:
         raise RuntimeError("No models registered in ensemble.")
 
@@ -106,9 +93,7 @@ def ensemble_classify(log_text: str) -> dict:
 
     logger.info(
         "Ensemble votes | final=%s | confidence=%.2f | votes=%s",
-        final_label,
-        confidence,
-        valid,
+        final_label, confidence, valid,
     )
 
     top_labels = [
@@ -135,38 +120,24 @@ def prewarm():
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  MODEL DEFINITIONS
-#  ↓ Fill in the loaders for the models you have. Leave the rest as-is.
 # ═══════════════════════════════════════════════════════════════════════════════
+
+_BASE = r"C:\Users\virgb\New\Desktop\Semester 7\FINAL_YEAR_PROJECT_CODEX\agentsoc\backend\prediction_models"
 
 # ── SVM ───────────────────────────────────────────────────────────────────────
 
-
 def _load_svm() -> dict:
     import joblib
-
-    model = joblib.load(
-        r"C:\Users\virgb\New\Desktop\Semester 7\FINAL_YEAR_PROJECT_CODEX\agentsoc\backend\prediction_models\svm\svm_tfidf_model.pkl"
-    )
-
-    vectorizer = joblib.load(
-        r"C:\Users\virgb\New\Desktop\Semester 7\FINAL_YEAR_PROJECT_CODEX\agentsoc\backend\prediction_models\svm\tfidf_vectorizer.pkl"
-    )
-
-    label_encoder = joblib.load(
-        r"C:\Users\virgb\New\Desktop\Semester 7\FINAL_YEAR_PROJECT_CODEX\agentsoc\backend\prediction_models\svm\label_encoder.pkl"
-    )
-
     return {
-        "model": model,
-        "vectorizer": vectorizer,
-        "label_encoder": label_encoder,
+        "model":         joblib.load(rf"{_BASE}\svm\svm_tfidf_model.pkl"),
+        "vectorizer":    joblib.load(rf"{_BASE}\svm\tfidf_vectorizer.pkl"),
+        "label_encoder": joblib.load(rf"{_BASE}\svm\label_encoder.pkl"),
     }
 
 def _predict_svm(data: dict, log_text: str) -> str:
-    X = data["vectorizer"].transform([log_text])
+    X    = data["vectorizer"].transform([log_text])
     pred = data["model"].predict(X)[0]
-    label = data["label_encoder"].inverse_transform([pred])[0]
-    return label
+    return data["label_encoder"].inverse_transform([pred])[0]
 
 register_model("svm", _load_svm, _predict_svm)
 
@@ -174,15 +145,77 @@ register_model("svm", _load_svm, _predict_svm)
 # ── LSTM ──────────────────────────────────────────────────────────────────────
 
 def _load_lstm() -> dict:
-    raise NotImplementedError   # ← implement when ready
+    import sys
+    import json
+    import torch
+    from pathlib import Path
+
+    lstm_dir = Path(rf"{_BASE}\lstm")
+
+    if str(lstm_dir) not in sys.path:
+        sys.path.insert(0, str(lstm_dir))
+
+    from lstm_model import BiLSTMClassifier, simple_tokenize
+
+    checkpoint_path = lstm_dir / "best_model.pt"
+    device          = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    checkpoint      = torch.load(str(checkpoint_path), map_location=device, weights_only=False)
+
+    # vocab is saved as a plain stoi dict in this checkpoint
+    vocab_stoi    = checkpoint["vocab"]           # { word: index, ... }
+    label_classes = checkpoint["label_classes"]   # ["auth-failed", "network-scan", ...]
+    cfg           = checkpoint.get("config", {})
+
+    model = BiLSTMClassifier(
+        vocab_size   = len(vocab_stoi),
+        embed_dim    = cfg.get("EMBED_DIM",   128),
+        hidden_dim   = cfg.get("HIDDEN_DIM",  128),
+        num_layers   = cfg.get("NUM_LAYERS",  1),
+        num_classes  = len(label_classes),
+        dropout      = cfg.get("DROPOUT",     0.3),
+        bidirectional = True,
+    ).to(device)
+
+    model.load_state_dict(checkpoint["model_state"])
+    model.eval()
+
+    logger.info(
+        "LSTM loaded — vocab=%d  classes=%d  device=%s",
+        len(vocab_stoi), len(label_classes), device,
+    )
+
+    return {
+        "model":         model,
+        "vocab":         vocab_stoi,
+        "label_classes": label_classes,
+        "device":        device,
+        "max_len":       cfg.get("MAX_LEN", 150),
+        "tokenize":      simple_tokenize,
+    }
+
 
 def _predict_lstm(data: dict, log_text: str) -> str:
-    import torch, numpy as np
-    seq = data["tokenizer"].encode(log_text)[:data["max_len"]]
-    seq += [0] * (data["max_len"] - len(seq))
+    import torch
+
+    vocab    = data["vocab"]
+    max_len  = data["max_len"]
+    device   = data["device"]
+    unk_idx  = vocab.get("<UNK>", 1)
+
+    tokens  = data["tokenize"](log_text)
+    encoded = [vocab.get(t, unk_idx) for t in tokens[:max_len]]
+    if not encoded:
+        encoded = [unk_idx]
+
+    x       = torch.tensor([encoded], dtype=torch.long).to(device)
+    lengths = torch.tensor([len(encoded)], dtype=torch.long).to(device)
+
     with torch.no_grad():
-        logits = data["model"](torch.tensor([seq]))
-    return data["classes"][int(logits.argmax())]
+        logits = data["model"](x, lengths)
+        pred   = int(torch.argmax(logits, dim=1).item())
+
+    return data["label_classes"][pred]
+
 
 register_model("lstm", _load_lstm, _predict_lstm)
 
@@ -190,7 +223,7 @@ register_model("lstm", _load_lstm, _predict_lstm)
 # ── BERT ──────────────────────────────────────────────────────────────────────
 
 def _load_bert() -> dict:
-    raise NotImplementedError   # ← implement when ready
+    raise NotImplementedError
 
 def _predict_bert(data: dict, log_text: str) -> str:
     import torch
@@ -208,107 +241,120 @@ def _load_sbert() -> dict:
     import pickle
     from sentence_transformers import SentenceTransformer
 
-    # choose your best prototype file
-    prototype_path = r"C:\Users\virgb\New\Desktop\Semester 7\FINAL_YEAR_PROJECT_CODEX\agentsoc\backend\prediction_models\sbert_approach3\version1_prototypes_mean.pkl"
-
+    prototype_path = rf"{_BASE}\sbert_approach3\version1_prototypes_mean.pkl"
     with open(prototype_path, "rb") as f:
         proto_data = pickle.load(f)
 
-    model = SentenceTransformer("all-MiniLM-L6-v2")
-
-    # sort labels to match inference indexing
-    labels_list = sorted(proto_data["prototypes"].keys())
-    prototype_matrix = [proto_data["prototypes"][label] for label in labels_list]
+    model        = SentenceTransformer("all-MiniLM-L6-v2")
+    labels_list  = sorted(proto_data["prototypes"].keys())
+    proto_matrix = [proto_data["prototypes"][lbl] for lbl in labels_list]
 
     return {
-        "model": model,
-        "labels_list": labels_list,
-        "prototype_matrix": prototype_matrix,
-        "label_classes": proto_data["label_classes"],
-        "method": proto_data["method"],
+        "model":            model,
+        "labels_list":      labels_list,
+        "prototype_matrix": proto_matrix,
+        "label_classes":    proto_data["label_classes"],
     }
 
 def _predict_sbert(data: dict, log_text: str) -> str:
     import numpy as np
     from sklearn.metrics.pairwise import cosine_similarity
 
-    emb = data["model"].encode([log_text], normalize_embeddings=False)
-
-    sims = cosine_similarity(emb, data["prototype_matrix"])[0]
+    emb      = data["model"].encode([log_text], normalize_embeddings=False)
+    sims     = cosine_similarity(emb, data["prototype_matrix"])[0]
     best_idx = int(np.argmax(sims))
-
     label_id = data["labels_list"][best_idx]
-    label = data["label_classes"][label_id]
-
-    return label
+    return data["label_classes"][label_id]
 
 register_model("sbert", _load_sbert, _predict_sbert)
 
 
 # ── Logformer ─────────────────────────────────────────────────────────────────
+
 def _load_logformer() -> dict:
+    import sys
+    import __main__
     import torch
+    from pathlib import Path
 
-    checkpoint_path = r"C:\Users\virgb\New\Desktop\Semester 7\FINAL_YEAR_PROJECT_CODEX\agentsoc\backend\prediction_models\logformer\best_model.pt"
+    logformer_dir = Path(rf"{_BASE}\logformer")
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    if str(logformer_dir) not in sys.path:
+        sys.path.insert(0, str(logformer_dir))
 
-    vocab = checkpoint["vocab"]
+    from logformer_model import LogFormer, Vocabulary, simple_tokenize
+
+    # The checkpoint was saved while the training script ran as __main__,
+    # so pickle serialised Vocabulary as __main__.Vocabulary.
+    # Patching __main__ lets torch.load find the class during unpickling.
+    if not hasattr(__main__, "Vocabulary"):
+        __main__.Vocabulary = Vocabulary
+    if not hasattr(__main__, "simple_tokenize"):
+        __main__.simple_tokenize = simple_tokenize
+
+    checkpoint_path = logformer_dir / "best_model.pt"
+    device          = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    checkpoint      = torch.load(str(checkpoint_path), map_location=device, weights_only=False)
+
+    vocab         = checkpoint["vocab"]
     label_encoder = checkpoint["label_encoder"]
-    saved_config = checkpoint.get("config", {})
+    cfg           = checkpoint.get("config", {})
 
-    # handle vocab object or dict
-    if isinstance(vocab, dict):
-        vocab_stoi = vocab
-        vocab_size = len(vocab)
-    else:
-        vocab_stoi = vocab.stoi if hasattr(vocab, "stoi") else vocab
-        vocab_size = len(vocab_stoi)
+    # checkpoint["vocab"] is a Vocabulary object — get its stoi dict
+    vocab_stoi = vocab.stoi if hasattr(vocab, "stoi") else vocab
+    vocab_size = len(vocab_stoi)
 
     model = LogFormer(
-        vocab_size=vocab_size,
-        embed_dim=saved_config.get("EMBED_DIM", 256),
-        num_heads=saved_config.get("NUM_HEADS", 4),
-        num_layers=saved_config.get("NUM_LAYERS", 4),
-        ffn_dim=saved_config.get("FFN_DIM", 1024),
-        num_classes=len(label_encoder.classes_),
-        dropout=saved_config.get("DROPOUT", 0.1),
-        max_len=saved_config.get("MAX_SEQ_LEN", 128),
-        pad_idx=vocab_stoi.get("<PAD>", 0)
+        vocab_size  = vocab_size,
+        embed_dim   = cfg.get("EMBED_DIM",   256),
+        num_heads   = cfg.get("NUM_HEADS",   4),
+        num_layers  = cfg.get("NUM_LAYERS",  4),
+        ffn_dim     = cfg.get("FFN_DIM",     1024),
+        num_classes = len(label_encoder.classes_),
+        dropout     = cfg.get("DROPOUT",     0.1),
+        max_len     = cfg.get("MAX_SEQ_LEN", 128),
+        pad_idx     = vocab_stoi.get("<PAD>", 0),
     ).to(device)
 
     model.load_state_dict(checkpoint["model_state"])
     model.eval()
 
+    logger.info(
+        "LogFormer loaded — vocab=%d  classes=%d  device=%s",
+        vocab_size, len(label_encoder.classes_), device,
+    )
+
     return {
-        "model": model,
-        "vocab": vocab_stoi,
+        "model":         model,
+        "vocab":         vocab_stoi,
         "label_encoder": label_encoder,
-        "device": device,
-        "max_len": saved_config.get("MAX_SEQ_LEN", 128),
+        "device":        device,
+        "max_len":       cfg.get("MAX_SEQ_LEN", 128),
+        "tokenize":      simple_tokenize,
     }
+
 
 def _predict_logformer(data: dict, log_text: str) -> str:
     import torch
 
-    tokens = simple_tokenize(log_text)
-    encoded = [
-        data["vocab"].get(token, data["vocab"].get("<UNK>", 1))
-        for token in tokens[:data["max_len"]]
-    ]
+    vocab    = data["vocab"]
+    max_len  = data["max_len"]
+    device   = data["device"]
+    unk_idx  = vocab.get("<UNK>", 1)
 
-    if len(encoded) == 0:
-        encoded = [data["vocab"].get("<UNK>", 1)]
+    tokens  = data["tokenize"](log_text)
+    encoded = [vocab.get(t, unk_idx) for t in tokens[:max_len]]
+    if not encoded:
+        encoded = [unk_idx]
 
-    x = torch.tensor([encoded], dtype=torch.long).to(data["device"])
-    lengths = torch.tensor([len(encoded)], dtype=torch.long).to(data["device"])
+    x       = torch.tensor([encoded], dtype=torch.long).to(device)
+    lengths = torch.tensor([len(encoded)], dtype=torch.long).to(device)
 
     with torch.no_grad():
         logits = data["model"](x, lengths)
-        pred = int(torch.argmax(logits, dim=1).item())
+        pred   = int(torch.argmax(logits, dim=1).item())
 
-    label = data["label_encoder"].inverse_transform([pred])[0]
-    return label
+    return data["label_encoder"].inverse_transform([pred])[0]
+
 
 register_model("logformer", _load_logformer, _predict_logformer)

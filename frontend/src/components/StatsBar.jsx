@@ -41,16 +41,8 @@ export default function StatsBar({ stats: statsProp, refreshTick }) {
       <StatCard label="Total logs"        value={stats?.total_logs}      />
       <StatCard label="Critical"          value={stats?.critical_count}  color="#dc2626" />
       <StatCard label="High"              value={stats?.high_count}      color="#ea580c" />
-      <StatCard label="Attack chains"     value={stats?.attack_chains}   color="#7c3aed" />
       <StatCard label="Correct feedback"  value={stats?.correct_feedback} color="#16a34a" />
       <StatCard label="False positives"   value={stats?.false_positives} color="#ca8a04" />
-      {stats?.accuracy_estimate != null && (
-        <StatCard
-          label="Est. accuracy"
-          value={`${(stats.accuracy_estimate * 100).toFixed(0)}%`}
-          color="#0284c7"
-        />
-      )}
     </div>
   );
 }
