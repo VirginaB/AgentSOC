@@ -1,0 +1,288 @@
+{
+  "T1110": {
+    "technique_id": "T1110",
+    "name": "Brute Force",
+    "tactic": "Credential Access",
+    "tactic_id": "TA0006",
+    "description": "Adversaries may use brute force techniques to gain access to accounts when passwords are unknown or when password hashes are obtained. Without knowledge of the password, an adversary may opt to guess, systematically check, or crack passwords through password spraying, credential stuffing, or dictionary attacks.",
+    "url": "https://attack.mitre.org/techniques/T1110/",
+    "sub_techniques": [
+      {"id": "T1110.001", "name": "Password Guessing"},
+      {"id": "T1110.002", "name": "Password Cracking"},
+      {"id": "T1110.003", "name": "Password Spraying"},
+      {"id": "T1110.004", "name": "Credential Stuffing"}
+    ]
+  },
+  "T1078": {
+    "technique_id": "T1078",
+    "name": "Valid Accounts",
+    "tactic": "Initial Access",
+    "tactic_id": "TA0001",
+    "description": "Adversaries may obtain and abuse credentials of existing accounts as a means of gaining Initial Access, Persistence, Privilege Escalation, or Defense Evasion. Compromised credentials may be used to bypass access controls placed on various resources on systems within the network.",
+    "url": "https://attack.mitre.org/techniques/T1078/",
+    "sub_techniques": [
+      {"id": "T1078.001", "name": "Default Accounts"},
+      {"id": "T1078.002", "name": "Domain Accounts"},
+      {"id": "T1078.003", "name": "Local Accounts"},
+      {"id": "T1078.004", "name": "Cloud Accounts"}
+    ]
+  },
+  "T1068": {
+    "technique_id": "T1068",
+    "name": "Exploitation for Privilege Escalation",
+    "tactic": "Privilege Escalation",
+    "tactic_id": "TA0004",
+    "description": "Adversaries may exploit software vulnerabilities to elevate privileges. Exploitation occurs when an adversary takes advantage of a programming error in a program, service, or within the OS or kernel itself to execute adversary-controlled code at a higher privilege level.",
+    "url": "https://attack.mitre.org/techniques/T1068/",
+    "sub_techniques": []
+  },
+  "T1083": {
+    "technique_id": "T1083",
+    "name": "File and Directory Discovery",
+    "tactic": "Discovery",
+    "tactic_id": "TA0007",
+    "description": "Adversaries may enumerate files and directories or may search in specific locations of a host or network share for certain information within a file system. Adversaries may use the information gathered to determine further steps to take in their operation, such as identifying credentials or understanding file system structure.",
+    "url": "https://attack.mitre.org/techniques/T1083/",
+    "sub_techniques": []
+  },
+  "T1565": {
+    "technique_id": "T1565",
+    "name": "Data Manipulation",
+    "tactic": "Impact",
+    "tactic_id": "TA0040",
+    "description": "Adversaries may insert, delete, or manipulate data in order to influence external outcomes or hide activity, potentially causing harm or evading detection. By manipulating data, adversaries may attempt to affect business processes, organizational understanding, and decision making.",
+    "url": "https://attack.mitre.org/techniques/T1565/",
+    "sub_techniques": [
+      {"id": "T1565.001", "name": "Stored Data Manipulation"},
+      {"id": "T1565.002", "name": "Transmitted Data Manipulation"},
+      {"id": "T1565.003", "name": "Runtime Data Manipulation"}
+    ]
+  },
+  "T1485": {
+    "technique_id": "T1485",
+    "name": "Data Destruction",
+    "tactic": "Impact",
+    "tactic_id": "TA0040",
+    "description": "Adversaries may destroy data and files on specific systems or in large numbers on a network to interrupt availability to systems, services, and network resources. Data destruction is likely to render stored data irrecoverable by forensic techniques through overwriting files or data on local and remote drives.",
+    "url": "https://attack.mitre.org/techniques/T1485/",
+    "sub_techniques": []
+  },
+  "T1074": {
+    "technique_id": "T1074",
+    "name": "Data Staged",
+    "tactic": "Collection",
+    "tactic_id": "TA0009",
+    "description": "Adversaries may stage collected data in a central location or directory prior to exfiltration. Data may be kept in separate files or combined into one file through techniques such as archival. Interactive command shells may be used to conduct this type of staging.",
+    "url": "https://attack.mitre.org/techniques/T1074/",
+    "sub_techniques": [
+      {"id": "T1074.001", "name": "Local Data Staging"},
+      {"id": "T1074.002", "name": "Remote Data Staging"}
+    ]
+  },
+  "T1055": {
+    "technique_id": "T1055",
+    "name": "Process Injection",
+    "tactic": "Defense Evasion",
+    "tactic_id": "TA0005",
+    "description": "Adversaries may inject code into processes in order to evade process-based defenses as well as possibly elevate privileges. Process injection is a method of executing arbitrary code in the address space of a separate live process. Running code in the context of another process may allow access to the process's memory, system/network resources, and possibly elevated privileges.",
+    "url": "https://attack.mitre.org/techniques/T1055/",
+    "sub_techniques": [
+      {"id": "T1055.001", "name": "Dynamic-link Library Injection"},
+      {"id": "T1055.002", "name": "Portable Executable Injection"},
+      {"id": "T1055.004", "name": "Asynchronous Procedure Call"}
+    ]
+  },
+  "T1489": {
+    "technique_id": "T1489",
+    "name": "Service Stop",
+    "tactic": "Impact",
+    "tactic_id": "TA0040",
+    "description": "Adversaries may stop or disable services on a system to render those services unavailable to legitimate users. Stopping critical services or processes can inhibit or stop response to an incident or aid in the adversary's overall objectives to cause damage to the environment.",
+    "url": "https://attack.mitre.org/techniques/T1489/",
+    "sub_techniques": []
+  },
+  "T1071": {
+    "technique_id": "T1071",
+    "name": "Application Layer Protocol",
+    "tactic": "Command and Control",
+    "tactic_id": "TA0011",
+    "description": "Adversaries may communicate using OSI application layer protocols to avoid detection or network filtering by blending in with existing traffic. Commands to the remote system, and often the results of those commands, will be embedded within the protocol traffic between the client and server.",
+    "url": "https://attack.mitre.org/techniques/T1071/",
+    "sub_techniques": [
+      {"id": "T1071.001", "name": "Web Protocols"},
+      {"id": "T1071.002", "name": "File Transfer Protocols"},
+      {"id": "T1071.003", "name": "Mail Protocols"},
+      {"id": "T1071.004", "name": "DNS"}
+    ]
+  },
+  "T1046": {
+    "technique_id": "T1046",
+    "name": "Network Service Discovery",
+    "tactic": "Discovery",
+    "tactic_id": "TA0007",
+    "description": "Adversaries may attempt to get a listing of services running on remote hosts and local network infrastructure devices, including those that may be vulnerable to remote software exploitation. Methods to acquire this information include port scans and vulnerability scans using tools that are brought onto a system.",
+    "url": "https://attack.mitre.org/techniques/T1046/",
+    "sub_techniques": []
+  },
+  "T1562": {
+    "technique_id": "T1562",
+    "name": "Impair Defenses",
+    "tactic": "Defense Evasion",
+    "tactic_id": "TA0005",
+    "description": "Adversaries may maliciously modify components of a victim environment in order to hinder or disable defensive mechanisms. This not only involves attacking preventive defenses such as firewalls and anti-virus, but also detection capabilities that defenders use to identify malicious activity.",
+    "url": "https://attack.mitre.org/techniques/T1562/",
+    "sub_techniques": [
+      {"id": "T1562.001", "name": "Disable or Modify Tools"},
+      {"id": "T1562.002", "name": "Disable Windows Event Logging"},
+      {"id": "T1562.003", "name": "Impair Command History Logging"},
+      {"id": "T1562.004", "name": "Disable or Modify System Firewall"}
+    ]
+  },
+  "T1562.004": {
+    "technique_id": "T1562.004",
+    "name": "Disable or Modify System Firewall",
+    "tactic": "Defense Evasion",
+    "tactic_id": "TA0005",
+    "description": "Adversaries may disable or modify system firewalls in order to bypass controls limiting network usage. Changes could be made to allowlist certain connections, block certain connections, or to make the firewall completely inoperable. Modifying or disabling a system's firewall may enable adversary C2 communications, lateral movement, and data exfiltration.",
+    "url": "https://attack.mitre.org/techniques/T1562/004/",
+    "sub_techniques": []
+  },
+  "T1190": {
+    "technique_id": "T1190",
+    "name": "Exploit Public-Facing Application",
+    "tactic": "Initial Access",
+    "tactic_id": "TA0001",
+    "description": "Adversaries may attempt to exploit a weakness in an Internet-facing host or system to initially access a network. The weakness in the system can be a software bug, a temporary glitch, or a misconfiguration that allows adversaries to gain initial access to the target.",
+    "url": "https://attack.mitre.org/techniques/T1190/",
+    "sub_techniques": []
+  },
+  "T1059": {
+    "technique_id": "T1059",
+    "name": "Command and Scripting Interpreter",
+    "tactic": "Execution",
+    "tactic_id": "TA0002",
+    "description": "Adversaries may abuse command and script interpreters to execute commands, scripts, or binaries. These interfaces and languages provide ways of interacting with computer systems and are a common feature across many different platforms. Most systems come with built-in command-line interfaces and scripting capabilities.",
+    "url": "https://attack.mitre.org/techniques/T1059/",
+    "sub_techniques": [
+      {"id": "T1059.001", "name": "PowerShell"},
+      {"id": "T1059.002", "name": "AppleScript"},
+      {"id": "T1059.003", "name": "Windows Command Shell"},
+      {"id": "T1059.004", "name": "Unix Shell"},
+      {"id": "T1059.006", "name": "Python"}
+    ]
+  },
+  "T1071.004": {
+    "technique_id": "T1071.004",
+    "name": "DNS",
+    "tactic": "Command and Control",
+    "tactic_id": "TA0011",
+    "description": "Adversaries may communicate using the Domain Name System (DNS) application layer protocol to avoid detection or network filtering by blending in with existing traffic. Commands to the remote system, and often the results of those commands, will be embedded within the protocol traffic between the client and server.",
+    "url": "https://attack.mitre.org/techniques/T1071/004/",
+    "sub_techniques": []
+  },
+  "T1021": {
+    "technique_id": "T1021",
+    "name": "Remote Services",
+    "tactic": "Lateral Movement",
+    "tactic_id": "TA0008",
+    "description": "Adversaries may use valid accounts to log into a service that accepts remote connections. The adversary may then perform actions as the logged-on user. This includes SSH, VNC, RDP, SMB, and other remote services that accept valid credentials.",
+    "url": "https://attack.mitre.org/techniques/T1021/",
+    "sub_techniques": [
+      {"id": "T1021.001", "name": "Remote Desktop Protocol"},
+      {"id": "T1021.002", "name": "SMB/Windows Admin Shares"},
+      {"id": "T1021.004", "name": "SSH"}
+    ]
+  },
+  "T1048": {
+    "technique_id": "T1048",
+    "name": "Exfiltration Over Alternative Protocol",
+    "tactic": "Exfiltration",
+    "tactic_id": "TA0010",
+    "description": "Adversaries may steal data by exfiltrating it over a different protocol than that of the existing command and control channel. The data may also be sent to an alternate network location from the main command and control server. Alternate protocols include FTP, SMTP, HTTP/S, DNS, SMB, and many others.",
+    "url": "https://attack.mitre.org/techniques/T1048/",
+    "sub_techniques": [
+      {"id": "T1048.001", "name": "Exfiltration Over Symmetric Encrypted Non-C2 Protocol"},
+      {"id": "T1048.002", "name": "Exfiltration Over Asymmetric Encrypted Non-C2 Protocol"},
+      {"id": "T1048.003", "name": "Exfiltration Over Unencrypted Non-C2 Protocol"}
+    ]
+  },
+  "T1041": {
+    "technique_id": "T1041",
+    "name": "Exfiltration Over C2 Channel",
+    "tactic": "Exfiltration",
+    "tactic_id": "TA0010",
+    "description": "Adversaries may steal data by exfiltrating it over an existing command and control channel. Stolen data is encoded into the normal communications channel using the same protocol as command and control communications. Data may be exfiltrated via an existing network connection.",
+    "url": "https://attack.mitre.org/techniques/T1041/",
+    "sub_techniques": []
+  },
+  "T1566": {
+    "technique_id": "T1566",
+    "name": "Phishing",
+    "tactic": "Initial Access",
+    "tactic_id": "TA0001",
+    "description": "Adversaries may send phishing messages to gain access to victim systems. All forms of phishing are electronically delivered social engineering. Phishing can be targeted to specific individuals (spearphishing) or sent in bulk. Phishing often involves social engineering techniques.",
+    "url": "https://attack.mitre.org/techniques/T1566/",
+    "sub_techniques": [
+      {"id": "T1566.001", "name": "Spearphishing Attachment"},
+      {"id": "T1566.002", "name": "Spearphishing Link"},
+      {"id": "T1566.003", "name": "Spearphishing via Service"}
+    ]
+  },
+  "T1136": {
+    "technique_id": "T1136",
+    "name": "Create Account",
+    "tactic": "Persistence",
+    "tactic_id": "TA0003",
+    "description": "Adversaries may create an account to maintain access to victim systems. With a sufficient level of access, creating such accounts may be used to establish secondary credentialed access that does not require persistent remote access tools to be deployed on the system.",
+    "url": "https://attack.mitre.org/techniques/T1136/",
+    "sub_techniques": [
+      {"id": "T1136.001", "name": "Local Account"},
+      {"id": "T1136.002", "name": "Domain Account"},
+      {"id": "T1136.003", "name": "Cloud Account"}
+    ]
+  },
+  "T1531": {
+    "technique_id": "T1531",
+    "name": "Account Access Removal",
+    "tactic": "Impact",
+    "tactic_id": "TA0040",
+    "description": "Adversaries may interrupt availability of system and network resources by inhibiting access to accounts utilized by legitimate users. Accounts may be deleted, locked, or manipulated to remove access to accounts. Adversaries may also subsequently log off and/or reboot boxes to set malicious changes into place.",
+    "url": "https://attack.mitre.org/techniques/T1531/",
+    "sub_techniques": []
+  },
+  "T1098": {
+    "technique_id": "T1098",
+    "name": "Account Manipulation",
+    "tactic": "Persistence",
+    "tactic_id": "TA0003",
+    "description": "Adversaries may manipulate accounts to maintain or elevate access to victim systems. Account manipulation may consist of any action that preserves or modifies adversary access to a compromised account, such as modifying credentials or permission groups.",
+    "url": "https://attack.mitre.org/techniques/T1098/",
+    "sub_techniques": [
+      {"id": "T1098.001", "name": "Additional Cloud Credentials"},
+      {"id": "T1098.002", "name": "Additional Email Delegate Permissions"},
+      {"id": "T1098.003", "name": "Additional Cloud Roles"}
+    ]
+  },
+  "T1547": {
+    "technique_id": "T1547",
+    "name": "Boot or Logon Autostart Execution",
+    "tactic": "Persistence",
+    "tactic_id": "TA0003",
+    "description": "Adversaries may configure system settings to automatically execute a program during system boot or logon to maintain persistence or gain higher-level privileges on compromised systems. Operating systems may have mechanisms for automatically running a program on system boot or account logon.",
+    "url": "https://attack.mitre.org/techniques/T1547/",
+    "sub_techniques": [
+      {"id": "T1547.001", "name": "Registry Run Keys / Startup Folder"},
+      {"id": "T1547.004", "name": "Winlogon Helper DLL"},
+      {"id": "T1547.009", "name": "Shortcut Modification"}
+    ]
+  },
+  "T1529": {
+    "technique_id": "T1529",
+    "name": "System Shutdown/Reboot",
+    "tactic": "Impact",
+    "tactic_id": "TA0040",
+    "description": "Adversaries may shutdown/reboot systems to interrupt access to, or aid in the destruction of, those systems. Operating systems may contain commands to initiate a shutdown/reboot of a machine or network devices. These commands may also be used to initiate a shutdown/reboot of a remote computer.",
+    "url": "https://attack.mitre.org/techniques/T1529/",
+    "sub_techniques": []
+  }
+}

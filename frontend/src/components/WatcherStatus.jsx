@@ -75,14 +75,14 @@ export default function WatcherStatus({ wsStatus }) {
         </span>
       </div>
 
-      {/* OS log watcher toggle — off by default, user starts it manually */}
+      {/* Log stream toggle — off by default, user starts it manually */}
       {watcher !== null && (
         <button
           onClick={toggle}
           disabled={toggling}
           title={watcher.running
-            ? "Stop real-time OS log collection"
-            : "Start real-time OS log collection"}
+            ? "Stop simulated log stream"
+            : "Start simulated log stream (dataset replay via syslog)"}
           style={{
             display: "flex", alignItems: "center", gap: 5,
             padding: "4px 12px", borderRadius: 99, cursor: "pointer",
@@ -100,7 +100,7 @@ export default function WatcherStatus({ wsStatus }) {
           }
           {toggling
             ? (watcher.running ? "Stopping…" : "Starting…")
-            : (watcher.running ? "Watching OS logs" : "Start OS watcher")}
+            : (watcher.running ? "Streaming logs" : "Start log stream")}
           {watcher.running && watcher.queue_size > 0 && (
             <span style={{
               padding: "1px 6px", borderRadius: 99,

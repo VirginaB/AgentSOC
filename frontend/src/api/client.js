@@ -32,3 +32,7 @@ export const streamStatus  = ()                    => api.get("/api/stream/statu
 export const getWatcherStatus = ()                 => api.get("/api/watcher/status");
 export const startWatcher     = ()                 => api.post("/api/watcher/start");
 export const stopWatcher      = ()                 => api.post("/api/watcher/stop");
+
+// MITRE ATT&CK lookup
+export const getMitreTechnique = (techniqueId)     => api.get(`/api/mitre/${encodeURIComponent(techniqueId)}`);
+export const getMitreByLabel   = (label)           => api.get(`/api/mitre/by-label/${encodeURIComponent(label)}`);

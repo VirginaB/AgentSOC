@@ -1,23 +1,42 @@
 import { useEffect, useState } from "react";
-import { generateExplanation, getSimilar, sendFeedback } from "../api/client";
+import { generateExplanation, getSimilar, sendFeedback, getMitreTechnique, getMitreByLabel } from "../api/client";
 import SeverityBadge from "./SeverityBadge";
-import { X, Shield, AlertTriangle, Link, ThumbsUp, ThumbsDown, Sparkles } from "lucide-react";
+import { X, Shield, AlertTriangle, ExternalLink, ThumbsUp, ThumbsDown, Sparkles, Crosshair } from "lucide-react";
 
 export default function AlertPanel({ alert, onClose }) {
   const [similar, setSimilar]   = useState([]);
   const [feedback, setFeedback] = useState(alert?.feedback || null);
   const [explanation, setExplanation] = useState(alert?.explanation || "");
   const [mitreTechnique, setMitreTechnique] = useState(alert?.mitre_technique || "");
+  const [mitreData, setMitreData] = useState(null);
   const [loadingExplanation, setLoadingExplanation] = useState(false);
 
+  // On alert change: fetch MITRE data by label (always available, instant)
   useEffect(() => {
     if (!alert) return;
     setFeedback(alert.feedback || null);
     setSimilar([]);
     setExplanation(alert.explanation || "");
     setMitreTechnique(alert.mitre_technique || "");
+    setMitreData(null);
+
+    getMitreByLabel(alert.label)
+      .then(r => setMitreData(r.data))
+      .catch(() => {});
+
     getSimilar(alert.id).then(r => setSimilar(r.data.similar || [])).catch(() => {});
   }, [alert?.id]);
+
+  // When LLM generates an explanation with a specific T-code, refine the MITRE lookup
+  useEffect(() => {
+    if (!mitreTechnique) return;
+    const match = mitreTechnique.match(/T\d{4}(?:\.\d{3})?/);
+    if (match) {
+      getMitreTechnique(match[0])
+        .then(r => setMitreData(r.data))
+        .catch(() => {});
+    }
+  }, [mitreTechnique]);
 
   const handleFeedback = async (type) => {
     try { await sendFeedback(alert.id, type); setFeedback(type); } catch (_) {}
@@ -140,14 +159,9 @@ export default function AlertPanel({ alert, onClose }) {
           )}
         </Section>
 
-        {mitreTechnique && (
-          <Section title="MITRE ATT&CK" icon={<Link size={13} />}>
-            <span style={{ fontSize: 12, fontWeight: 500, padding: "3px 10px",
-              background: "#ede9fe", color: "#5b21b6", borderRadius: 99 }}>
-              {mitreTechnique}
-            </span>
-          </Section>
-        )}
+        <Section title="MITRE ATT&CK" icon={<Crosshair size={13} />}>
+          <MitreCard data={mitreData} />
+        </Section>
 
         {similar.length > 0 && (
           <Section title={`Similar logs (${similar.length})`}>
@@ -215,5 +229,133 @@ function FeedbackBtn({ active, color, bgActive, onClick, icon, label }) {
     }}>
       {icon} {label}
     </button>
+  );
+}
+
+// ── MITRE tactic colour map ───────────────────────────────────────────────────
+const TACTIC_COLORS = {
+  "Initial Access":        { bg: "#fef2f2", text: "#b91c1c", border: "#fca5a5" },
+  "Execution":             { bg: "#fff7ed", text: "#c2410c", border: "#fdba74" },
+  "Persistence":           { bg: "#fefce8", text: "#854d0e", border: "#fde047" },
+  "Privilege Escalation":  { bg: "#f5f3ff", text: "#6d28d9", border: "#c4b5fd" },
+  "Defense Evasion":       { bg: "#eff6ff", text: "#1d4ed8", border: "#93c5fd" },
+  "Credential Access":     { bg: "#fdf4ff", text: "#7e22ce", border: "#d8b4fe" },
+  "Discovery":             { bg: "#f0fdf4", text: "#15803d", border: "#86efac" },
+  "Lateral Movement":      { bg: "#ecfeff", text: "#0e7490", border: "#67e8f9" },
+  "Collection":            { bg: "#eef2ff", text: "#4338ca", border: "#a5b4fc" },
+  "Command and Control":   { bg: "#fff1f2", text: "#9f1239", border: "#fda4af" },
+  "Exfiltration":          { bg: "#fff7ed", text: "#9a3412", border: "#fb923c" },
+  "Impact":                { bg: "#fef2f2", text: "#991b1b", border: "#fca5a5" },
+};
+
+function MitreCard({ data }) {
+  if (!data) {
+    return (
+      <div style={{
+        fontSize: 12, color: "var(--muted)", padding: "10px 12px",
+        background: "var(--surface)", borderRadius: 8,
+        border: "0.5px solid var(--border)",
+      }}>
+        Loading technique data...
+      </div>
+    );
+  }
+
+  const tacticStyle = TACTIC_COLORS[data.tactic] ?? {
+    bg: "var(--surface)", text: "var(--muted)", border: "var(--border)",
+  };
+
+  return (
+    <div style={{
+      background: "var(--surface)",
+      border: "0.5px solid var(--border)",
+      borderRadius: 10,
+      overflow: "hidden",
+    }}>
+      {/* Header row: technique ID + tactic badge */}
+      <div style={{
+        padding: "10px 12px",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        flexWrap: "wrap",
+        borderBottom: "0.5px solid var(--border)",
+      }}>
+        <span style={{
+          fontSize: 12, fontWeight: 700, fontFamily: "monospace",
+          padding: "2px 8px", borderRadius: 6,
+          background: "#ede9fe", color: "#5b21b6",
+          border: "0.5px solid #c4b5fd", flexShrink: 0,
+        }}>
+          {data.technique_id}
+        </span>
+
+        <span style={{
+          fontSize: 13, fontWeight: 600, color: "var(--text)", flex: 1,
+        }}>
+          {data.name}
+        </span>
+
+        <span style={{
+          fontSize: 11, fontWeight: 500, padding: "2px 8px", borderRadius: 99,
+          background: tacticStyle.bg, color: tacticStyle.text,
+          border: `0.5px solid ${tacticStyle.border}`, flexShrink: 0,
+        }}>
+          {data.tactic}
+        </span>
+      </div>
+
+      {/* Description */}
+      <div style={{ padding: "10px 12px" }}>
+        <p style={{
+          fontSize: 12, lineHeight: 1.65, color: "var(--muted)",
+          margin: 0,
+          display: "-webkit-box",
+          WebkitLineClamp: 4,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+        }}>
+          {data.description}
+        </p>
+      </div>
+
+      {/* Sub-techniques */}
+      {data.sub_techniques && data.sub_techniques.length > 0 && (
+        <div style={{
+          padding: "0 12px 10px",
+          display: "flex", flexWrap: "wrap", gap: 4,
+        }}>
+          {data.sub_techniques.map(sub => (
+            <span key={sub.id} style={{
+              fontSize: 11, padding: "2px 7px", borderRadius: 6,
+              background: "var(--card)", color: "var(--muted)",
+              border: "0.5px solid var(--border)",
+            }}>
+              {sub.id} · {sub.name}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Footer: external link */}
+      <div style={{
+        padding: "8px 12px",
+        borderTop: "0.5px solid var(--border)",
+      }}>
+        <a
+          href={data.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 5,
+            fontSize: 12, color: "var(--accent)", textDecoration: "none",
+            fontWeight: 500,
+          }}
+        >
+          <ExternalLink size={12} />
+          View on MITRE ATT&CK
+        </a>
+      </div>
+    </div>
   );
 }

@@ -21,6 +21,7 @@ from db import init_db, AsyncSessionLocal
 from routers.analyze import router as analyze_router
 from routers.chat import router as chat_router
 from routers.feedback import router as feedback_router
+from routers.mitre import router as mitre_router
 from ws_manager import manager as ws_manager
 
 logging.basicConfig(
@@ -30,8 +31,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# Global watcher reference (so lifespan and toggle endpoints can reach it)
-_log_watcher = None
+# Global stream references (so lifespan and toggle endpoints can reach them)
+_syslog_receiver = None
+_dataset_replayer = None
 
 
 async def _prewarm_models():
@@ -67,7 +69,7 @@ def _load_similarity():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _log_watcher
+    global _syslog_receiver, _dataset_replayer
 
     logger.info("AgentSOC starting up...")
     await init_db()
@@ -76,37 +78,41 @@ async def lifespan(app: FastAPI):
     # Pre-warm ML models in the background — don't block startup
     asyncio.create_task(_prewarm_models())
 
-    # ── Log watcher is intentionally NOT started here ──────────────────────
-    # The analyst must click "Start OS Watcher" in the frontend UI, which
-    # calls POST /api/watcher/start. This gives full control over when
-    # OS log collection begins and avoids surprise activity on startup.
-    # ────────────────────────────────────────────────────────────────────────
-    try:
-        from services.log_watcher import LogWatcherService
+    # ── Syslog receiver + dataset replayer (idle until analyst clicks Start) ──
+    # Both are created here but NOT started. The analyst clicks
+    # "Start Log Stream" in the UI → POST /api/watcher/start starts both.
+    # ─────────────────────────────────────────────────────────────────────────
+    from services.syslog_receiver import SyslogReceiver
+    from services.dataset_replayer import DatasetReplayer
 
-        @asynccontextmanager
-        async def _db_factory():
-            async with AsyncSessionLocal() as session:
-                yield session
+    @asynccontextmanager
+    async def _db_factory():
+        async with AsyncSessionLocal() as session:
+            yield session
 
-        # Build the watcher instance but do NOT call .start() yet
-        _log_watcher = LogWatcherService(
-            db_factory=_db_factory,
-            broadcast_fn=ws_manager.broadcast,
-            # sources=["file:/path/to/your.log"],  # override auto-detect here
-        )
-        logger.info(
-            "LogWatcherService created (idle). "
-            "Click 'Start OS Watcher' in the UI to begin collection."
-        )
-    except Exception as e:
-        logger.warning(f"LogWatcherService could not be created: {e}. Manual analysis still works.")
+    _syslog_receiver = SyslogReceiver(
+        host="0.0.0.0",
+        port=settings.syslog_port,
+        db_factory=_db_factory,
+        broadcast_fn=ws_manager.broadcast,
+    )
+    _dataset_replayer = DatasetReplayer(
+        target_host="127.0.0.1",
+        target_port=settings.syslog_port,
+        interval=1.0,
+    )
+    logger.info(
+        "SyslogReceiver + DatasetReplayer created (idle). "
+        "Click 'Start Log Stream' in the UI to begin."
+    )
 
     yield
 
-    # Shutdown — stop watcher if it was running
-    if _log_watcher and _log_watcher.is_running:
-        await _log_watcher.stop()
+    # Shutdown — stop both if running
+    if _dataset_replayer and _dataset_replayer.is_running:
+        await _dataset_replayer.stop()
+    if _syslog_receiver and _syslog_receiver.is_running:
+        await _syslog_receiver.stop()
     logger.info("AgentSOC shutting down.")
 
 
@@ -130,17 +136,18 @@ app.add_middleware(
 app.include_router(analyze_router)
 app.include_router(chat_router)
 app.include_router(feedback_router)
+app.include_router(mitre_router)
 
 
 @app.get("/health")
 async def health():
-    watcher_status = "running" if (_log_watcher and _log_watcher.is_running) else "stopped"
-    queue_size = _log_watcher.queue_size if _log_watcher else 0
+    running = bool(_syslog_receiver and _syslog_receiver.is_running)
+    queue_size = _syslog_receiver.queue_size if _syslog_receiver else 0
     return {
         "status": "ok",
         "service": "AgentSOC",
         "version": "1.0.0",
-        "log_watcher": watcher_status,
+        "log_stream": "running" if running else "stopped",
         "queue_size": queue_size,
         "ws_clients": len(ws_manager.active),
     }
@@ -149,29 +156,32 @@ async def health():
 @app.get("/api/watcher/status")
 async def watcher_status():
     return {
-        "running": bool(_log_watcher and _log_watcher.is_running),
-        "queue_size": _log_watcher.queue_size if _log_watcher else 0,
+        "running": bool(_syslog_receiver and _syslog_receiver.is_running),
+        "queue_size": _syslog_receiver.queue_size if _syslog_receiver else 0,
         "ws_clients": len(ws_manager.active),
     }
 
 
 @app.post("/api/watcher/start")
 async def watcher_start():
-    """Start OS log collection. Called explicitly by the analyst via the UI."""
-    if _log_watcher is None:
-        return {"running": False, "error": "LogWatcherService not available on this platform."}
-    if not _log_watcher.is_running:
-        await _log_watcher.start()
-        logger.info("LogWatcher started by analyst via UI.")
-    return {"running": _log_watcher.is_running}
+    """Start the syslog receiver and dataset replayer."""
+    if _syslog_receiver is None:
+        return {"running": False, "error": "SyslogReceiver not initialised."}
+    if not _syslog_receiver.is_running:
+        await _syslog_receiver.start()
+        await _dataset_replayer.start()
+        logger.info("Log stream started by analyst via UI.")
+    return {"running": _syslog_receiver.is_running}
 
 
 @app.post("/api/watcher/stop")
 async def watcher_stop():
-    """Stop OS log collection."""
-    if _log_watcher and _log_watcher.is_running:
-        await _log_watcher.stop()
-        logger.info("LogWatcher stopped by analyst via UI.")
+    """Stop the dataset replayer and syslog receiver."""
+    if _dataset_replayer and _dataset_replayer.is_running:
+        await _dataset_replayer.stop()
+    if _syslog_receiver and _syslog_receiver.is_running:
+        await _syslog_receiver.stop()
+        logger.info("Log stream stopped by analyst via UI.")
     return {"running": False}
 
 

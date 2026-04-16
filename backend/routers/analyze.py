@@ -46,7 +46,7 @@ async def analyze_log(
         db=db,
         log_text=payload.log_text,
         source_ip=payload.source_ip,
-        include_explanation=True,
+        include_explanation=False,
         include_similar=False,
         add_similarity=True,
     )

@@ -76,11 +76,13 @@ export default function LogFeed({ alerts: alertsProp, refreshTick, onSelectAlert
   const sortedAlerts = sortAlertsByTimestamp(allAlerts);
 
   // Client-side filter when using prop alerts (server filters for local fetch)
-  const alerts = filter === "ALL"
-    ? sortedAlerts
-    : sortedAlerts.filter((a) => a.risk_tier === filter);
+  const alerts =
+    filter === "ALL"          ? sortedAlerts :
+    filter === "FALSE_POSITIVE" ? sortedAlerts.filter((a) => a.feedback === "false_positive") :
+    sortedAlerts.filter((a) => a.risk_tier === filter);
 
   const tiers = ["ALL", "CRITICAL", "HIGH", "MEDIUM", "LOW"];
+  const FP_FILTER = "FALSE_POSITIVE";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -96,6 +98,17 @@ export default function LogFeed({ alerts: alertsProp, refreshTick, onSelectAlert
             transition: "all 0.15s",
           }}>{t}</button>
         ))}
+
+        {/* False positive filter — visually separated */}
+        <div style={{ width: "0.5px", background: "var(--border)", alignSelf: "stretch", margin: "0 2px" }} />
+        <button onClick={() => setFilter(FP_FILTER)} style={{
+          padding: "4px 14px", borderRadius: 99, fontSize: 12, fontWeight: 500,
+          cursor: "pointer", transition: "all 0.15s",
+          border: `0.5px solid ${filter === FP_FILTER ? "#dc2626" : "var(--border)"}`,
+          background: filter === FP_FILTER ? "#fee2e2" : "var(--card)",
+          color: filter === FP_FILTER ? "#dc2626" : "var(--muted)",
+        }}>False Positives</button>
+
         <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)", alignSelf: "center" }}>
           {alerts.length} alerts
         </span>
